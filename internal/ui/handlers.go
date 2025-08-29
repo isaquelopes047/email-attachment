@@ -10,14 +10,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/transben/pendencias-downloader/internal/agendador"
 	"github.com/transben/pendencias-downloader/internal/config"
+	"github.com/transben/pendencias-downloader/internal/email"
 	"github.com/transben/pendencias-downloader/internal/logger"
 	"github.com/transben/pendencias-downloader/internal/servico"
 )
 
+//go:embed assets/templates/*.html assets/templates/*/*.html assets/css/*.css assets/js/*.js assets/img/*.svg
 var assetsFS embed.FS
 
 type DadosPagina struct {
@@ -26,6 +29,32 @@ type DadosPagina struct {
 	ArquivoLogDia string
 	PastaDestino  string
 	Intervalo     int
+	Rota          string
+	LogoURL       string
+}
+
+// valida se config está completa o suficiente p/ tentar conectar
+func validarConfigMinima(cfg config.Config) (ok bool, faltando []string) {
+	if cfg.PastaDestino == "" {
+		faltando = append(faltando, "pasta_destino")
+	}
+	if cfg.IntervaloMinutos <= 0 {
+		faltando = append(faltando, "intervalo_minutos")
+	}
+	if cfg.Email.Servidor == "" {
+		faltando = append(faltando, "email.servidor")
+	}
+	if cfg.Email.Porta <= 0 {
+		faltando = append(faltando, "email.porta")
+	}
+	if cfg.Email.Usuario == "" {
+		faltando = append(faltando, "email.usuario")
+	}
+	// senha é opcional aqui se você usar outro método, mas p/ Gmail normalmente precisa:
+	if cfg.Email.Senha == "" {
+		faltando = append(faltando, "email.senha")
+	}
+	return len(faltando) == 0, faltando
 }
 
 // NovoMux cria um http.Handler com todas as rotas do painel.
@@ -39,34 +68,73 @@ func NovoMux(
 ) http.Handler {
 	mux := http.NewServeMux()
 
+	// /static → serve css/js do embed
 	sub, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
 		panic(fmt.Errorf("embed 'assets' não encontrado: %w", err))
 	}
-
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		raw, err := fs.ReadFile(assetsFS, "assets/index.html")
+	// helper para renderizar com base+partial+page
+	render := func(w http.ResponseWriter, page string, data DadosPagina) {
+		tpl, err := template.ParseFS(
+			assetsFS,
+			"assets/templates/layout/base.html",
+			"assets/templates/partials/header.html",
+			"assets/templates/"+page,
+		)
 		if err != nil {
-			http.Error(w, "index não encontrado: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "template inválido: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		tpl := template.Must(template.New("index").Parse(string(raw)))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = tpl.ExecuteTemplate(w, "base", data)
+	}
 
+	// -------- PÁGINAS --------
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hoje := time.Now().Format("2006-01-02")
 		cfg := store.Obter()
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = tpl.Execute(w, DadosPagina{
+		render(w, "status.html", DadosPagina{
 			Porta:         porta,
 			DataHoje:      hoje,
 			ArquivoLogDia: filepath.Join("logs", hoje+".log"),
 			PastaDestino:  cfg.PastaDestino,
 			Intervalo:     cfg.IntervaloMinutos,
+			Rota:          "status",
+			LogoURL:       fmt.Sprintf("https://picsum.photos/seed/%d/48/48", time.Now().UnixNano()%100000),
 		})
 	})
 
+	// /logs (e /log como alias)
+	logsHandler := func(w http.ResponseWriter, r *http.Request) {
+		hoje := time.Now().Format("2006-01-02")
+		render(w, "logs.html", DadosPagina{
+			Porta:         porta,
+			DataHoje:      hoje,
+			ArquivoLogDia: filepath.Join("logs", hoje+".log"),
+			Rota:          "logs",
+			LogoURL:       fmt.Sprintf("https://picsum.photos/seed/%d/48/48", time.Now().UnixNano()%100000),
+		})
+	}
+	mux.HandleFunc("/logs", logsHandler)
+	mux.HandleFunc("/log", logsHandler)
+
+	mux.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
+		hoje := time.Now().Format("2006-01-02")
+		cfg := store.Obter()
+		render(w, "config.html", DadosPagina{
+			Porta:         porta,
+			DataHoje:      hoje,
+			ArquivoLogDia: filepath.Join("logs", hoje+".log"),
+			PastaDestino:  cfg.PastaDestino,
+			Intervalo:     cfg.IntervaloMinutos,
+			Rota:          "config",
+			LogoURL:       fmt.Sprintf("https://picsum.photos/seed/%d/48/48", time.Now().UnixNano()%100000),
+		})
+	})
+
+	// -------- APIs --------
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
 		n := 200
 		if v := r.URL.Query().Get("linhas"); v != "" {
@@ -83,6 +151,28 @@ func NovoMux(
 			"arquivo": caminho,
 			"linhas":  linhas,
 		})
+	})
+
+	mux.HandleFunc("/download/logs", func(w http.ResponseWriter, r *http.Request) {
+		n := 200
+		if v := r.URL.Query().Get("linhas"); v != "" {
+			if vv, err := strconvAtoiSafe(v); err == nil && vv > 0 && vv <= 2000 {
+				n = vv
+			}
+		}
+
+		hoje := time.Now().Format("2006-01-02")
+		caminho := filepath.Join("logs", hoje+".log")
+		linhas, err := lerUltimasLinhas(caminho, n)
+		if err != nil {
+			http.Error(w, "sem logs para hoje", http.StatusNotFound)
+			return
+		}
+
+		nome := fmt.Sprintf("logs-%s-%dlinhas.txt", hoje, n)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, nome))
+		_, _ = w.Write([]byte(strings.Join(linhas, "\n")))
 	})
 
 	mux.HandleFunc("/api/executar", func(w http.ResponseWriter, r *http.Request) {
@@ -103,12 +193,10 @@ func NovoMux(
 			http.Error(w, "método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
-
 		switch r.Method {
 		case http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(store.Sanitizada())
-
 		case http.MethodPut:
 			var payload map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -132,9 +220,37 @@ func NovoMux(
 		}
 	})
 
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		cfg := store.Obter()
+		cfgOK, faltando := validarConfigMinima(cfg)
+
+		imapOK := false
+		var errStr string
+		if cfgOK {
+			// ping leve: conecta e desconecta
+			cl := email.NovoClienteIMAP(&cfg)
+			if err := cl.Conectar(); err == nil {
+				imapOK = true
+				cl.Desconectar()
+			} else {
+				errStr = err.Error()
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"config_ok": cfgOK,
+			"faltando":  faltando,
+			"imap_ok":   imapOK,
+			"erro":      errStr,
+			"ts":        time.Now().Format(time.RFC3339),
+		})
+	})
+
 	return mux
 }
 
+// ---------- utilitários ----------
 func strconvAtoiSafe(s string) (int, error) {
 	var n int
 	_, err := fmt.Sscanf(s, "%d", &n)

@@ -1,0 +1,21 @@
+{{define "base"}}
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Pendências Downloader</title>
+  <link rel="stylesheet" href="/static/css/styles.css"/>
+</head>
+<body>
+  <div class="container">
+    {{template "header" .}}
+    <main>
+      {{block "content" .}}{{end}}
+    </main>
+  </div>
+  {{block "scripts" .}}{{end}}
+  <script type="module" src="/static/js/header.js"></script>
+</body>
+</html>
+{{end}}

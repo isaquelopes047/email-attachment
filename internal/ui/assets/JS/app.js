@@ -1,15 +1,37 @@
-// internal/ui/assets/js/app.js
 import { getConfig, putConfig, getLogs, execNow } from './api.js';
-import { preencherCampos, coletarPayloadDoForm, renderLogs, setStatus } from './ui.js';
+import { preencherCampos, coletarPayloadDoForm, renderLogs, setStatus, showView } from './ui.js';
+
+function normalizarConfig(c) {
+  const email = c.email ?? c.Email ?? {};
+  return {
+    pasta_destino: c.pasta_destino ?? c.PastaDestino ?? '',
+    intervalo_minutos: c.intervalo_minutos ?? c.IntervaloMinutos ?? 10,
+    caixa: c.caixa ?? c.Caixa ?? 'INBOX',
+    marcar_como_lido: c.marcar_como_lido ?? c.MarcarComoLido ?? false,
+    so_nao_lidos: c.so_nao_lidos ?? c.SoNaoLidos ?? true,
+    email: {
+      servidor: email.servidor ?? email.Servidor ?? '',
+      porta: email.porta ?? email.Porta ?? 993,
+      usuario: email.usuario ?? email.Usuario ?? '',
+      usar_tls: email.usar_tls ?? email.UsarTLS ?? true
+    }
+  };
+}
 
 async function carregarConfig() {
-  const cfg = await getConfig();
+  const cfgRaw = await getConfig();
+  const cfg = normalizarConfig(cfgRaw);
   preencherCampos(cfg);
+  // arquivo de log do dia (mostra na tela de status)
+  const dataHoje = document.getElementById('status_data')?.textContent || '';
+  const arq = `logs/${dataHoje}.log`;
+  const el = document.getElementById('status_arquivo_log');
+  if (el) el.textContent = arq;
 }
 
 async function carregarLogs() {
-  const select = document.getElementById('qtd');
-  const n = select ? Number(select.value || 200) : 200;
+  const sel = document.getElementById('qtd');
+  const n = sel ? Number(sel.value || 200) : 200;
   const js = await getLogs(n);
   renderLogs(js.linhas || []);
 }
@@ -20,7 +42,7 @@ async function salvarConfig() {
   try {
     await putConfig(payload);
     setStatus('cfgStatus', 'salvo!');
-    await carregarConfig(); // reflete o que persistiu
+    await carregarConfig();
   } catch (e) {
     setStatus('cfgStatus', 'erro ao salvar');
   }
@@ -37,22 +59,49 @@ async function executarAgora() {
   }
 }
 
-function wireEvents() {
-  const btnSalvar = document.getElementById('btnSalvarCfg');
-  if (btnSalvar) btnSalvar.addEventListener('click', salvarConfig);
+function wire() {
+  const map = {
+    'btnSalvarCfg': salvarConfig,
+    'executar': executarAgora,
+    'atualizar': carregarLogs
+  };
+  Object.entries(map).forEach(([id, fn]) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  });
 
-  const btnExec = document.getElementById('executar');
-  if (btnExec) btnExec.addEventListener('click', executarAgora);
+  // auto-refresh logs
+  setInterval(() => {
+    const h = location.hash || '#/status';
+    if (h.startsWith('#/logs')) carregarLogs().catch(() => { });
+  }, 5000);
 
-  const btnAtualizar = document.getElementById('atualizar');
-  if (btnAtualizar) btnAtualizar.addEventListener('click', carregarLogs);
+  window.addEventListener('hashchange', route);
+}
 
-  // auto-refresh de logs
-  setInterval(carregarLogs, 5000);
+export function showView(name) {
+  const views = ['status', 'logs', 'config'];
+  views.forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    if (!el) return;
+    const ativo = (v === name);
+    if (ativo) {
+      el.removeAttribute('hidden'); // padrão HTML
+      el.style.display = '';        // reseta qualquer inline antigo
+    } else {
+      el.setAttribute('hidden', ''); // padrão HTML
+      el.style.display = 'none';     // força caso algum CSS conflite
+    }
+  });
+
+  // realça a aba ativa
+  document.querySelectorAll('.tab').forEach(a => {
+    a.classList.toggle('active', a.dataset.route === name);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  wireEvents();
-  await carregarConfig();
-  await carregarLogs();
+  wire();
+  if (!location.hash) location.hash = '#/status';
+  await route();
 });

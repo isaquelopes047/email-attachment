@@ -1,0 +1,24 @@
+{{define "content"}}
+<section class="card">
+  <div style="display:flex; gap:8px; align-items:center; justify-content:space-between;">
+    <h2>Logs de hoje</h2>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label class="footer-muted">linhas</label>
+      <select id="qtd" class="input" style="width:110px">
+        <option>100</option>
+        <option selected>200</option>
+        <option>500</option>
+        <option>1000</option>
+      </select>
+      <button class="btn" id="atualizar">Atualizar</button>
+      <a class="btn" id="baixar" href="/download/logs?linhas=200">Baixar TXT</a>
+    </div>
+  </div>
+  <pre id="logs" class="logs">Carregando...</pre>
+  <div class="footer-muted">arquivo: <span id="logs_arquivo">{{.ArquivoLogDia}}</span> • data: <span id="logs_data">{{.DataHoje}}</span></div>
+</section>
+{{end}}
+
+{{define "scripts"}}
+<script type="module" src="/static/js/logs.js"></script>
+{{end}}

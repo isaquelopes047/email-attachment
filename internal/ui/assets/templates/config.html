@@ -1,0 +1,33 @@
+{{define "content"}}
+<section class="grid cols-2">
+  <div class="card">
+    <h2>Geral</h2>
+    <div class="kvs">
+      <div>Pasta destino</div><div><input id="cfg_pasta" class="input"/></div>
+      <div>Intervalo (min)</div><div><input id="cfg_intervalo" class="input" type="number" min="1"/></div>
+      <div>Caixa</div><div><input id="cfg_caixa" class="input"/></div>
+      <div>Marcar como lido</div><div><input id="cfg_lido" type="checkbox"/></div>
+      <div>Só não lidos</div><div><input id="cfg_sonaolidos" type="checkbox"/></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>IMAP</h2>
+    <div class="kvs">
+      <div>Servidor</div><div><input id="cfg_servidor" class="input"/></div>
+      <div>Porta</div><div><input id="cfg_porta" class="input" type="number" min="1"/></div>
+      <div>Usuário</div><div><input id="cfg_usuario" class="input"/></div>
+      <div>Senha</div><div><input id="cfg_senha" class="input" type="password" placeholder="(deixe em branco p/ manter)"/></div>
+      <div>Usar TLS</div><div><input id="cfg_tls" type="checkbox"/></div>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button class="btn success" id="btnSalvarCfg">Salvar</button>
+      <span id="cfgStatus" class="footer-muted"></span>
+    </div>
+  </div>
+</section>
+{{end}}
+
+{{define "scripts"}}
+<script type="module" src="/static/js/config.js"></script>
+{{end}}

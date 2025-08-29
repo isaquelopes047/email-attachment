@@ -1,0 +1,25 @@
+{{define "content"}}
+<section class="grid cols-2">
+  <div class="card">
+    <h2>Resumo</h2>
+    <div class="kvs">
+      <div>Destino dos anexos</div><div><span class="pill" id="status_pasta">{{.PastaDestino}}</span></div>
+      <div>Intervalo agendado</div><div><span class="pill" id="status_intervalo">{{.Intervalo}} min</span></div>
+      <div>Caixa</div><div><span class="pill" id="status_caixa">INBOX</span></div>
+      <div>Servidor IMAP</div><div><span class="pill" id="status_servidor">—</span></div>
+      <div>Arquivo de log (hoje)</div><div><span class="pill" id="status_arquivo_log">{{.ArquivoLogDia}}</span></div>
+    </div>
+    <div class="footer-muted">porta: <span>{{.Porta}}</span> • data: <span id="status_data">{{.DataHoje}}</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Ações rápidas</h2>
+    <button class="btn primary" id="executar">Executar agora</button>
+    <div class="footer-muted" id="statusExecucao"></div>
+  </div>
+</section>
+{{end}}
+
+{{define "scripts"}}
+<script type="module" src="/static/js/status.js"></script>
+{{end}}
