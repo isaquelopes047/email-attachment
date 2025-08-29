@@ -1,0 +1,11 @@
+pasta_destino: "C:\\Pendencias"
+intervalo_minutos: 10
+email:
+  servidor: imap.gmail.com
+  porta: 993
+  usuario: seu.email@dominio.com
+  senha: ""          # deixe vazio (use .env)
+  usar_tls: true
+marcar_como_lido: true
+so_nao_lidos: true
+caixa: INBOX

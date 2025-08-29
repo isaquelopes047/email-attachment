@@ -1,0 +1,6 @@
+# Segredos/local
+.env
+configs/config.yaml
+
+# Logs/artefatos
+logs/
